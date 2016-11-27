@@ -159,7 +159,16 @@ namespace MigrateFromDropbox
         static void Main(string[] args)
         {
             //DeleteDups.DoDeleteDups();
+            //CopyFromDropbox.DoCopy();
 
+            Console.WriteLine("done");
+        }
+    }
+
+    static class CopyFromDropbox
+    {
+        public static void DoCopy()
+        {
             const int PropertyTagEquipMake = 0x010F;
             const int PropertyTagEquipModel = 0x0110;
 
@@ -168,12 +177,8 @@ namespace MigrateFromDropbox
             //2016-04-02 16.40.25 HDR-2.jpg
             var rName = new Regex(@"^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}.\d{2}.\d{2})(?<hdr> HDR)?(-(?<counter>\d))?.jpg$", RegexOptions.IgnoreCase);
 
-            var sw = Stopwatch.StartNew();
-            int i = 0;
-            foreach (var f in Directory.GetFiles(OLD, "*.jpg"))
+            foreach (var f in Directory.GetFiles(Program.OLD, "*.jpg"))
             {
-                //if (i++ == 20)
-                //    break;
                 var m = rName.Match(Path.GetFileName(f));
                 if (!m.Success)
                 {
@@ -221,7 +226,7 @@ namespace MigrateFromDropbox
 
                 var hdrStr = isHdr ? "_HDR" : "";
                 var newFileName = $"{timestamp.ToUniversalTime():yyyyMMdd_HHmmss}00{counter}{make}{hdrStr}.jpg";
-                var newPath = Path.Combine(NEW, newFileName);
+                var newPath = Path.Combine(Program.NEW, newFileName);
                 if (File.Exists(newPath))
                 {
                     Console.WriteLine($"exists: {f} -> {newPath}");
@@ -230,19 +235,19 @@ namespace MigrateFromDropbox
                     {
                         newHisto = new Histogram(img);
                     }
-                    Console.WriteLine($"{newFileName} ?= {Path.GetFileName(f)}: {newHisto.Equals(oldHisto)}");
+                    var equal = newHisto.Equals(oldHisto);
+                    Console.WriteLine($"{newFileName} ?= {Path.GetFileName(f)}: {equal}");
+                    if (equal)
+                        File.Delete(f);
                 }
                 else
                 {
-                    //Console.WriteLine("move: " + newFileName);
-                    //File.Move(f, newPath);
+                    Console.WriteLine("move: " + newFileName);
+                    File.Move(f, newPath);
                 }
 
-                //Console.WriteLine($"{Path.GetFileName(f)} -> {newFileName}");
+                Console.WriteLine($"{Path.GetFileName(f)} -> {newFileName}");
             }
-
-            sw.Stop();
-            Console.WriteLine($"{sw.ElapsedMilliseconds}");
 
             Console.WriteLine("done");
         }
@@ -256,8 +261,6 @@ namespace MigrateFromDropbox
             return ret;
         }
     }
-
-    //static class Copy
 
     static class DeleteDups
     {
