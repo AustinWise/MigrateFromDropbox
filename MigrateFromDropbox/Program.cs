@@ -149,6 +149,7 @@ namespace MigrateFromDropbox
             return IsEqual(this.R, other.R) && IsEqual(this.B, other.B) && IsEqual(this.G, other.G);
         }
     }
+
     static class Program
     {
         public const string OLD = @"D:\AustinWise\Dropbox\Camera Uploads";
@@ -158,11 +159,109 @@ namespace MigrateFromDropbox
         {
             //DeleteDups.DoDeleteDups();
             //CopyFromDropbox.DoCopy();
+            DeleteSimilarPhotos.Delete();
 
             Console.WriteLine("done");
         }
     }
 
+    /// <summary>
+    /// Finds files with similar names, detects duplicates by using histogram, and deletes dups.
+    /// </summary>
+    /// <remarks>
+    /// This is needed as files are uploaded a little differently by dropbox and did not screen out by
+    /// the hash dup check.
+    /// </remarks>
+    static class DeleteSimilarPhotos
+    {
+        static Dictionary<DateTime, List<string>> sDates = new Dictionary<DateTime, List<string>>();
+        public static void Delete()
+        {
+            //20020804_180648000_iOS
+            var rName = new Regex(@"^(?<date>\d{8}_\d{6})(?<ms>\d{3})(?<extra>.*)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            Parallel.ForEach(Directory.GetFiles(Program.NEW, "*.jpg"), f =>
+            {
+                DateTime date;
+                var m = rName.Match(Path.GetFileName(f));
+                if (!m.Success)
+                    return;
+                date = DateTime.ParseExact(m.Groups["date"].Value, "yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+
+                lock (sDates)
+                {
+                    List<string> paths;
+                    if (!sDates.TryGetValue(date, out paths))
+                    {
+                        paths = new List<string>();
+                        sDates.Add(date, paths);
+                    }
+                    paths.Add(f);
+                }
+            });
+
+
+            Parallel.ForEach(sDates.Where(kvp => kvp.Value.Count > 1), kvp =>
+            {
+                var pathsGroupedByHisto = new List<Tuple<Histogram, List<string>>>(kvp.Value.Count);
+                foreach (var f in kvp.Value)
+                {
+                    Histogram histo;
+                    using (var img = Image.FromFile(f))
+                    {
+                        histo = new Histogram(img);
+                    }
+
+                    Tuple<Histogram, List<string>> histoGroup = null;
+                    foreach (var tup in pathsGroupedByHisto)
+                    {
+                        if (histo.Equals(tup.Item1))
+                        {
+                            histoGroup = tup;
+                            break;
+                        }
+                    }
+
+                    if (histoGroup == null)
+                    {
+                        histoGroup = Tuple.Create(histo, new List<string>());
+                        pathsGroupedByHisto.Add(histoGroup);
+                    }
+
+                    histoGroup.Item2.Add(Path.GetFileName(f));
+                }
+
+                foreach (var group in pathsGroupedByHisto)
+                {
+                    if (group.Item2.Count == 1)
+                        continue;
+                    Dictionary<int, string> msToPath = null;
+                    try
+                    {
+                        msToPath = group.Item2.ToDictionary(f => int.Parse(rName.Match(f).Groups["ms"].Value));
+                    }
+                    catch (ArgumentException)
+                    {
+                    }
+
+                    string fileToDelete;
+                    if (msToPath != null && msToPath.TryGetValue(0, out fileToDelete))
+                    {
+                        Console.WriteLine("delete " + fileToDelete);
+                        File.Delete(Path.Combine(Program.NEW, fileToDelete));
+                    }
+                    else
+                    {
+                        Console.WriteLine("what do?: " + string.Join(", ", group.Item2));
+                    }
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Move files from Dropbox to OneDrive. If a file already exists at the destination,
+    /// delete it if the histogram is the same as the source.
+    /// </summary>
     static class CopyFromDropbox
     {
         public static void DoCopy()
@@ -260,6 +359,9 @@ namespace MigrateFromDropbox
         }
     }
 
+    /// <summary>
+    /// Finds files that has the same hash and deletes the duplicates.
+    /// </summary>
     static class DeleteDups
     {
         static readonly object sLock = new object();
