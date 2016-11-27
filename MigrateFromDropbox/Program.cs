@@ -12,7 +12,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using HIST_TYPE = System.Single;
 
 namespace MigrateFromDropbox
 {
@@ -24,10 +23,10 @@ namespace MigrateFromDropbox
         const int BUCKET_SHIFT = 5;
         const int BUCKET_MASK = (1 << BUCKET_SHIFT) - 1;
         const int BUCKETS = 1 << BUCKET_SHIFT;
-        const HIST_TYPE BUCKET_DIFF_TOLERANCE = (HIST_TYPE)0.0001;
-        static readonly Vector<HIST_TYPE> sComp = new Vector<HIST_TYPE>(BUCKET_DIFF_TOLERANCE);
+        const float BUCKET_DIFF_TOLERANCE = (float)0.0001;
+        static readonly Vector<float> sComp = new Vector<float>(BUCKET_DIFF_TOLERANCE);
 
-        HIST_TYPE[] R, B, G;
+        float[] R, B, G;
 
         public Histogram(Image img)
         {
@@ -78,10 +77,10 @@ namespace MigrateFromDropbox
                 }
             }
 
-            HIST_TYPE totalPixles = width * height;
-            R = new HIST_TYPE[BUCKETS];
-            B = new HIST_TYPE[BUCKETS];
-            G = new HIST_TYPE[BUCKETS];
+            float totalPixles = width * height;
+            R = new float[BUCKETS];
+            B = new float[BUCKETS];
+            G = new float[BUCKETS];
             for (int i = 0; i < BUCKETS; i++)
             {
                 R[i] = r[i] / totalPixles;
@@ -129,18 +128,17 @@ namespace MigrateFromDropbox
             }
         }
 
-        static bool IsEqual(HIST_TYPE[] a, HIST_TYPE[] b)
+        static bool IsEqual(float[] a, float[] b)
         {
             if (a.Length != BUCKETS || b.Length != BUCKETS)
                 throw new ArgumentOutOfRangeException();
-            for (int i = 0; i < BUCKETS; i += Vector<HIST_TYPE>.Count)
+            for (int i = 0; i < BUCKETS; i += Vector<float>.Count)
             {
-                var diff = Vector.Subtract(new Vector<HIST_TYPE>(a, i), new Vector<HIST_TYPE>(b, i));
+                var diff = Vector.Subtract(new Vector<float>(a, i), new Vector<float>(b, i));
                 var abs = Vector.Abs(diff);
                 if (Vector.GreaterThanAny(abs, sComp))
                     return false;
             }
-            //System.Diagnostics.Debugger.Break();
             return true;
         }
 
