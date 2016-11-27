@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -21,6 +22,7 @@ namespace MigrateFromDropbox
         const int PropertyTagOrientation = 0x0112;
 
         const int BUCKET_SHIFT = 5;
+        const int BUCKET_MASK = (1 << BUCKET_SHIFT) - 1;
         const int BUCKETS = 1 << BUCKET_SHIFT;
         const HIST_TYPE BUCKET_DIFF_TOLERANCE = (HIST_TYPE)0.01 / BUCKETS / 3;
         static readonly Vector<HIST_TYPE> sComp = new Vector<HIST_TYPE>(BUCKET_DIFF_TOLERANCE);
@@ -36,41 +38,61 @@ namespace MigrateFromDropbox
 
             int shift = 8 - BUCKET_SHIFT;
 
+            int width;
+            int height;
             using (var bmp = new Bitmap(img))
             {
                 //fixOrientation(orientation, bmp);
 
-                var width = bmp.Width;
-                var height = bmp.Height;
-                for (int x = 0; x < width; x++)
+                width = bmp.Width;
+                height = bmp.Height;
+                var format = bmp.PixelFormat;
+
+                if (format != PixelFormat.Format32bppArgb)
+                    throw new ArgumentOutOfRangeException();
+
+                BitmapData bmpData = null;
+                try
                 {
-                    for (int y = 0; y < height; y++)
+                    bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, format);
+                    if (width != bmpData.Width || height != bmp.Height)
+                        throw new NotSupportedException();
+
+                    unsafe
                     {
-                        var c = bmp.GetPixel(x, y);
-                        r[c.R >> shift]++;
-                        b[c.B >> shift]++;
-                        g[c.G >> shift]++;
+                        Int32* ptr = (Int32*)bmpData.Scan0;
+                        for (int i = 0; i < width * height; i++)
+                        {
+                            var c = *ptr;
+                            r[(c >> (16 + shift)) & BUCKET_MASK]++;
+                            g[(c >> (8 + shift)) & BUCKET_MASK]++;
+                            b[(c >> (0 + shift)) & BUCKET_MASK]++;
+                            ptr++;
+                        }
                     }
                 }
+                finally
+                {
+                    if (bmpData != null)
+                        bmp.UnlockBits(bmpData);
+                }
+            }
 
-                BitmapData bmpData;
-
-                HIST_TYPE totalPixles = width * height;
-                R = new HIST_TYPE[BUCKETS];
-                B = new HIST_TYPE[BUCKETS];
-                G = new HIST_TYPE[BUCKETS];
-                for (int i = 0; i < BUCKETS; i++)
-                {
-                    R[i] = r[i] / totalPixles;
-                }
-                for (int i = 0; i < BUCKETS; i++)
-                {
-                    R[i] = r[i] / totalPixles;
-                }
-                for (int i = 0; i < BUCKETS; i++)
-                {
-                    R[i] = r[i] / totalPixles;
-                }
+            HIST_TYPE totalPixles = width * height;
+            R = new HIST_TYPE[BUCKETS];
+            B = new HIST_TYPE[BUCKETS];
+            G = new HIST_TYPE[BUCKETS];
+            for (int i = 0; i < BUCKETS; i++)
+            {
+                R[i] = r[i] / totalPixles;
+            }
+            for (int i = 0; i < BUCKETS; i++)
+            {
+                R[i] = r[i] / totalPixles;
+            }
+            for (int i = 0; i < BUCKETS; i++)
+            {
+                R[i] = r[i] / totalPixles;
             }
         }
 
@@ -118,7 +140,7 @@ namespace MigrateFromDropbox
                 if (Vector.GreaterThanAny(abs, sComp))
                     return false;
             }
-            System.Diagnostics.Debugger.Break();
+            //System.Diagnostics.Debugger.Break();
             return true;
         }
 
@@ -137,7 +159,7 @@ namespace MigrateFromDropbox
         static void Main(string[] args)
         {
             //DeleteDups.DoDeleteDups();
-            
+
             const int PropertyTagEquipMake = 0x010F;
             const int PropertyTagEquipModel = 0x0110;
 
@@ -146,8 +168,12 @@ namespace MigrateFromDropbox
             //2016-04-02 16.40.25 HDR-2.jpg
             var rName = new Regex(@"^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}.\d{2}.\d{2})(?<hdr> HDR)?(-(?<counter>\d))?.jpg$", RegexOptions.IgnoreCase);
 
+            var sw = Stopwatch.StartNew();
+            int i = 0;
             foreach (var f in Directory.GetFiles(OLD, "*.jpg"))
             {
+                //if (i++ == 20)
+                //    break;
                 var m = rName.Match(Path.GetFileName(f));
                 if (!m.Success)
                 {
@@ -205,17 +231,19 @@ namespace MigrateFromDropbox
                         newHisto = new Histogram(img);
                     }
                     Console.WriteLine($"{newFileName} ?= {Path.GetFileName(f)}: {newHisto.Equals(oldHisto)}");
-
-                    Console.WriteLine();
                 }
                 else
                 {
-                    Console.WriteLine("move: " + newFileName);
+                    //Console.WriteLine("move: " + newFileName);
                     //File.Move(f, newPath);
                 }
 
                 //Console.WriteLine($"{Path.GetFileName(f)} -> {newFileName}");
             }
+
+            sw.Stop();
+            Console.WriteLine($"{sw.ElapsedMilliseconds}");
+
             Console.WriteLine("done");
         }
 
