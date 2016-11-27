@@ -24,7 +24,7 @@ namespace MigrateFromDropbox
         const int BUCKET_SHIFT = 5;
         const int BUCKET_MASK = (1 << BUCKET_SHIFT) - 1;
         const int BUCKETS = 1 << BUCKET_SHIFT;
-        const HIST_TYPE BUCKET_DIFF_TOLERANCE = (HIST_TYPE)0.01 / BUCKETS / 3;
+        const HIST_TYPE BUCKET_DIFF_TOLERANCE = (HIST_TYPE)0.0001;
         static readonly Vector<HIST_TYPE> sComp = new Vector<HIST_TYPE>(BUCKET_DIFF_TOLERANCE);
 
         HIST_TYPE[] R, B, G;
